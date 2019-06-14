@@ -1,0 +1,348 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: 'The username of the source GitHub repo.'
+  GitHubRepo:
+    Type: String
+    Description: 'The source GitHub repo name (without the username).'
+  GitHubBranch:
+    Type: String
+    Default: master
+    Description: 'The source GitHub branch.'
+  GitHubPersonalAccessToken:
+    Type: String
+    NoEcho: true
+    Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
+  EC2KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: '[Optional] An existing EC2 keypair to be able to ssh to your staging host.'
+  EC2InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: 'The staging host EC2 instance type. Only tested on x86_64.'
+  EC2AMI:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
+  EC2VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: 'The VPC where to run the staging host.'
+  EC2Subnet:
+    Type: AWS::EC2::Subnet::Id
+    Description: 'The subnet for the staging host.'
+  Domain:
+    Type: String
+    Description: '[Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: GitHub Configuration
+        Parameters:
+          - GitHubOwner
+          - GitHubRepo
+          - GitHubBranch
+          - GitHubPersonalAccessToken
+      - Label:
+          default: EC2 Configuration
+        Parameters:
+          - EC2InstanceType
+          - EC2AMI
+          - EC2KeyPair
+          - EC2VPC
+          - EC2Subnet
+      - Label:
+          default: HTTPS Configuration
+        Parameters:
+          - Domain
+    ParameterLabels:
+      GitHubOwner:
+        default: GitHub Username
+      GitHubRepo:
+        default: GitHub Repo Name
+      GitHubBranch:
+        default: GitHub Branch
+      GitHubPersonalAccessToken:
+        default: GitHub Personal Access Token
+      EC2InstanceType:
+        default: EC2 Instance Type
+      EC2AMI:
+        default: EC2 AMI
+      EC2KeyPair:
+        default: EC2 Key Pair
+      EC2VPC:
+        default: EC2 VPC
+      EC2Subnet:
+        default: EC2 Subnet
+      Domain:
+        default: Domain Name
+
+Outputs:
+  StagingURL:
+    Value: !If [HasDomain, !Sub 'https://staging.${Domain}/', !Sub 'http://${StagingIP}/']
+
+Conditions:
+  HasEC2KeyPair: !Not [!Equals [!Ref EC2KeyPair, '']]
+  HasDomain: !Not [!Equals [!Ref Domain, '']]
+
+Resources:
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref AWS::StackName
+      ServiceRole: !GetAtt ServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+      Source:
+        Type: CODEPIPELINE
+
+  DeploymentApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Ref AWS::StackName
+      ComputePlatform: Server
+
+  StagingDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn: StagingInstance
+    Properties:
+      DeploymentGroupName: staging
+      ApplicationName: !Ref DeploymentApplication
+      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      Ec2TagFilters:
+        - Key: !Ref AWS::StackName
+          Type: KEY_AND_VALUE
+          Value: staging
+      ServiceRoleArn: !GetAtt ServiceRole.Arn
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref AWS::StackName
+      ArtifactStore:
+        Location: !Ref BuildArtifactsBucket
+        Type: S3
+      RoleArn: !GetAtt ServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: Source
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubPersonalAccessToken
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Build
+              Configuration:
+                ProjectName: !Ref BuildProject
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: Staging
+              InputArtifacts:
+                - Name: Build
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref DeploymentApplication
+                DeploymentGroupName: !Ref StagingDeploymentGroup
+              RunOrder: 1
+
+  BuildArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub 'codepipeline-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  PipelineWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubPersonalAccessToken
+      Filters:
+        - JsonPath: $.ref
+          MatchEquals: 'refs/heads/{Branch}'
+      TargetPipeline: !Ref Pipeline
+      TargetAction: Source
+      Name: !Sub 'webhook-${AWS::StackName}'
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+      RegisterWithThirdParty: true
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - codepipeline.amazonaws.com
+              - codedeploy.amazonaws.com
+              - codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  StagingInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+    Properties:
+      SubnetId: !Ref EC2Subnet
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !Ref EC2AMI
+      InstanceType: !Ref EC2InstanceType
+      KeyName: !If [HasEC2KeyPair, !Ref EC2KeyPair, !Ref 'AWS::NoValue']
+      SecurityGroupIds:
+        - !GetAtt SecurityGroup.GroupId
+      Tags:
+        - Key: !Ref AWS::StackName
+          Value: staging
+      UserData:
+        Fn::Base64:
+          !Join
+            - ''
+            - - !Sub |
+                  #!/bin/bash
+
+                  # Get Node.js 12
+                  curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
+
+                  # Update all packages
+                  yum -y update
+
+                  # Install dependencies
+                  yum install -y ruby nodejs python3 iptables-services
+
+                  # Install CodeDeploy agent
+                  cd /tmp
+                  curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
+                  chmod +x ./install
+                  ./install auto
+
+              - !If
+                - HasDomain
+                - !Sub |
+                  # Install Certbot for Let's Encrypt
+                  cd /tmp
+                  wget -r --no-parent -A 'epel-release-*.rpm' http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/
+                  rpm -Uvh dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-*.rpm
+                  yum-config-manager --enable epel*
+                  yum install -y certbot python-pip
+                  pip install certbot_dns_route53
+
+                  # Generate a new HTTPS cert
+                  certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d staging.${Domain}
+
+                  # Set iptables rule to forward port 443 to 8443
+                  iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443
+                - !Sub |
+                  # Set iptables rule to forward port 80 to 8080
+                  iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
+
+              - !Sub |
+                  service iptables save
+                  service iptables start
+                  systemctl enable iptables
+
+                  # Signal to CloudFormation that the instance is ready
+                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+                  /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+
+                  # Deploy to outdated instances
+                  aws deploy create-deployment --application-name ${AWS::StackName} --deployment-group staging --update-outdated-instances-only --region ${AWS::Region}
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Security group from ${AWS::StackName} staging host'
+      VpcId: !Ref EC2VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: !If [HasDomain, 443, 80]
+        ToPort: !If [HasDomain, 443, 80]
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+
+  InstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - "ec2.amazonaws.com"
+              - "codedeploy.amazonaws.com"
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  StagingIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref StagingInstance
+
+  StagingDNS:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDomain
+    Properties:
+      HostedZoneName: !Sub '${Domain}.'
+      Name: !Sub 'staging.${Domain}.'
+      Type: A
+      TTL: 300
+      ResourceRecords:
+      - !Ref StagingIP

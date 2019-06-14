@@ -1,0 +1,28 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 10
+    commands:
+      # uninstall Node.js v10 from CodeBuild's image
+      - yes | n uninstall
+
+      # install Node.js v12
+      - curl -sL https://deb.nodesource.com/setup_12.x | bash -
+      - apt-get install -y nodejs
+  pre_build:
+    commands:
+      # run npm install using versions in package-lock.json
+      - npm ci
+  build:
+    commands:
+      # run the test suite
+      - npm test
+
+      # run the build
+      - npm run build
+artifacts:
+  files:
+    # bundle everything as a build artifact, except hidden files
+    - '**/*'
