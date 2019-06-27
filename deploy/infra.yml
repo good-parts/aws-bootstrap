@@ -32,6 +32,7 @@ Parameters:
     Description: 'Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is already managed by Route 53.'
   Certificate:
     Type: String
+    Default: ''
     Description: 'An existing ACM certificate ARN for staging.<YOUR DOMAIN>.'
 
 Metadata:
@@ -350,10 +351,11 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       TargetType: ip
-      HealthCheckProtocol: TCP
       Port: !If [HasDomain, 8443, 8080]
-      Protocol: TCP
+      Protocol: !If [HasDomain, TLS, TCP]
       VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckProtocol: !If [HasDomain, HTTPS, HTTP]
       Targets:
         - Id: !GetAtt StagingInstance.PrivateIp
 
