@@ -25,7 +25,7 @@ At the end of this setup you will end up with an EC2 instance, an S3 bucket, and
 
 ![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/stack-output.png)
 
-5. Click on the output URL to see the demo web app.
+5. Click on the output URL to see the demo web app. If the website doesn't load immediately, wait for the deployment in step 6 to finish.
 
 ![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/app.png)
 
