@@ -58,20 +58,20 @@ git clone https://github.com/<YOUR GIHUB USERNAME>/github-to-ec2-pipeline.git
 
 ```
 aws cloudformation deploy \
-    --region us-west-2 \
-    --stack-name MyApp \
-    --template-file ./deploy/infra.yml \
-    --no-fail-on-empty-changeset \
-    --parameter-overrides \
-      GitHubOwner=dvassallo \
-      GitHubRepo=github-to-ec2-pipeline \
-      GitHubBranch=master \
-      GitHubPersonalAccessToken=$(cat ~/.github/access-token) \
-      EC2InstanceType=t3.micro \
-      EC2KeyPair=dvassallo \
-      Domain=vassallo.io \
-      Certificate=arn:aws:acm:us-west-2:275168683210:certificate/cd1f3db3-c045-4a8f-b0bf-9649889f54db \
-    --capabilities CAPABILITY_NAMED_IAM
+  --region us-west-2 \
+  --stack-name MyApp \
+  --template-file ./deploy/infra.yml \
+  --no-fail-on-empty-changeset \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    GitHubOwner=dvassallo \
+    GitHubRepo=github-to-ec2-pipeline \
+    GitHubBranch=master \
+    GitHubPersonalAccessToken=$(cat ~/.github/access-token) \
+    EC2InstanceType=t3.micro \
+    EC2KeyPair=dvassallo \
+    Domain=vassallo.io \
+    Certificate=arn:aws:acm:us-west-2:275168683210:certificate/cd1f3db3-c045-4a8f-b0bf-9649889f54db
 ```
 
 These are all the available options for `parameter-overrides`:
