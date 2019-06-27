@@ -17,7 +17,7 @@ Parameters:
     Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
   EC2KeyPair:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: '[Optional] An existing EC2 keypair to be able to ssh to your staging host.'
+    Description: 'An existing EC2 keypair to be able to ssh to your staging host.'
   EC2InstanceType:
     Type: String
     Default: t3.micro
@@ -28,7 +28,11 @@ Parameters:
     Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
   Domain:
     Type: String
-    Description: '[Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.'
+    Default: ''
+    Description: 'Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is already managed by Route 53.'
+  Certificate:
+    Type: String
+    Description: 'An existing ACM certificate ARN for staging.<YOUR DOMAIN>.'
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -47,9 +51,10 @@ Metadata:
           - EC2AMI
           - EC2KeyPair
       - Label:
-          default: HTTPS Configuration
+          default: HTTPS Configuration (Optional)
         Parameters:
           - Domain
+          - Certificate
     ParameterLabels:
       GitHubOwner:
         default: GitHub Username
@@ -67,13 +72,19 @@ Metadata:
         default: EC2 Key Pair
       Domain:
         default: Domain Name
+      Certificate:
+        default: ACM Certificate ARN
 
 Outputs:
   StagingURL:
-    Value: !If [HasDomain, !Sub 'https://staging.${Domain}/', !Sub 'http://${StagingIP}/']
+    Value: !If
+      - HasDomain
+      - !Sub https://staging.${Domain}/
+      - !Sub
+        - http://${LoadBalancerDNS}/
+        - { LoadBalancerDNS: !GetAtt StagingLoadBalancer.DNSName }
 
 Conditions:
-  HasEC2KeyPair: !Not [!Equals [!Ref EC2KeyPair, '']]
   HasDomain: !Not [!Equals [!Ref Domain, '']]
 
 Resources:
@@ -170,7 +181,9 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub 'codepipeline-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub 
+        - 'codepipeline-${id}'
+        - { id: !Select [2, !Split [/, !Ref 'AWS::StackId']] }
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -222,7 +235,7 @@ Resources:
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref EC2AMI
       InstanceType: !Ref EC2InstanceType
-      KeyName: !If [HasEC2KeyPair, !Ref EC2KeyPair, !Ref 'AWS::NoValue']
+      KeyName: !Ref EC2KeyPair
       SecurityGroupIds:
         - !GetAtt SecurityGroup.GroupId
       Tags:
@@ -242,7 +255,7 @@ Resources:
                   yum -y update
 
                   # Install dependencies
-                  yum install -y ruby nodejs python3 iptables-services
+                  yum install -y ruby nodejs
 
                   # Install CodeDeploy agent
                   cd /tmp
@@ -253,28 +266,13 @@ Resources:
               - !If
                 - HasDomain
                 - !Sub |
-                  # Install Certbot for Let's Encrypt
-                  cd /tmp
-                  wget -r --no-parent -A 'epel-release-*.rpm' http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/
-                  rpm -Uvh dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-*.rpm
-                  yum-config-manager --enable epel*
-                  yum install -y certbot python-pip
-                  pip install certbot_dns_route53
-
-                  # Generate a new HTTPS cert
-                  certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d staging.${Domain}
-
-                  # Set iptables rule to forward port 443 to 8443
-                  iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443
-                - !Sub |
-                  # Set iptables rule to forward port 80 to 8080
-                  iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
-
+                  # Create a self-signed TLS certificate to communicate with the load balancer
+                  mkdir -p /home/ec2-user/keys
+                  cd /home/ec2-user/keys
+                  openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=/ST=/L=/O=/CN=localhost" -keyout key.pem -out cert.pem
+                  chown -R ec2-user:ec2-user /home/ec2-user/keys
+                - ''
               - !Sub |
-                  service iptables save
-                  service iptables start
-                  systemctl enable iptables
-
                   # Signal to CloudFormation that the instance is ready
                   /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
                   /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
@@ -289,9 +287,9 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress:
       - IpProtocol: tcp
-        FromPort: !If [HasDomain, 443, 80]
-        ToPort: !If [HasDomain, 443, 80]
-        CidrIp: 0.0.0.0/0
+        FromPort: !If [HasDomain, 8443, 8080]
+        ToPort: !If [HasDomain, 8443, 8080]
+        CidrIp: !GetAtt VPC.CidrBlock
       - IpProtocol: tcp
         FromPort: 22
         ToPort: 22
@@ -318,12 +316,6 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/PowerUserAccess
 
-  StagingIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-      InstanceId: !Ref StagingInstance
-
   StagingDNS:
     Type: AWS::Route53::RecordSet
     Condition: HasDomain
@@ -331,9 +323,39 @@ Resources:
       HostedZoneName: !Sub '${Domain}.'
       Name: !Sub 'staging.${Domain}.'
       Type: A
-      TTL: 300
-      ResourceRecords:
-      - !Ref StagingIP
+      AliasTarget:
+        HostedZoneId: !GetAtt StagingLoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt StagingLoadBalancer.DNSName
+
+  StagingLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: network
+      Subnets:
+        - !Ref Subnet
+
+  StagingLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref StagingLoadBalancerTargetGroup
+      LoadBalancerArn: !Ref StagingLoadBalancer
+      Certificates:
+        - CertificateArn: !If [HasDomain, !Ref Certificate, !Ref 'AWS::NoValue']
+      Port: !If [HasDomain, 443, 80]
+      Protocol: !If [HasDomain, TLS, TCP]
+
+  StagingLoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      HealthCheckProtocol: TCP
+      Port: !If [HasDomain, 8443, 8080]
+      Protocol: TCP
+      VpcId: !Ref VPC
+      Targets:
+        - Id: !GetAtt StagingInstance.PrivateIp
 
   VPC:
     Type: AWS::EC2::VPC

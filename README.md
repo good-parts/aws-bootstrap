@@ -9,7 +9,7 @@ You can try this in your AWS account in about 7 clicks. The final result will be
 
 2. Create a new [GitHub Personal Access Token](https://github.com/settings/tokens) to let AWS read your GitHub repos and set up a webhook. Give it full "repo" and "admin:repo_hook" permissions.
 
-![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/github-permissions.png)
+![GitHub Permissions](/docs/github-permissions.png?raw=true)
 
 3. Click the button below to start setting up all the AWS resources in your account.
 
@@ -19,23 +19,23 @@ At the end of this setup you will end up with an EC2 instance, an S3 bucket, and
 
 4. Fill in all the required parameters.
 
-![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/cfn-create-stack.png)
+![Create CloudFormation Stack](/docs/create-stack.png?raw=true)
 
 4. Wait for the CloudFormation stack to finish and find the output URL.
 
-![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/stack-output.png)
+![CloudFormation Stack Output](/docs/stack-output.png?raw=true)
 
 5. Click on the output URL to see the demo web app. If the website doesn't load immediately, wait for the deployment in step 6 to finish.
 
-![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/app.png)
+![Demo App](/docs/app.png?raw=true)
 
 6. You can now find your new CI/CD pipeline in the [CodePipeline console](https://console.aws.amazon.com/codesuite/codepipeline/pipelines).
 
-![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/pipeline.png)
+![CI/CD Pipeline](/docs/pipeline.png?raw=true)
 
 7. Now when you push a new change to GitHub, the pipeline will pick it up, build it, and deploy it. The demo app takes about 3 minutes to go through the pipeline.
 
-![](https://dvassallo.s3-us-west-2.amazonaws.com/github-to-ec2-pipeline/pipeline-history.png)
+![Pipeline History](/docs/pipeline-history.png?raw=true)
 
 ### Setup From the AWS CLI
 
@@ -70,6 +70,7 @@ aws cloudformation deploy \
       EC2InstanceType=t3.micro \
       EC2KeyPair=dvassallo \
       Domain=vassallo.io \
+      Certificate=arn:aws:acm:us-west-2:275168683210:certificate/cd1f3db3-c045-4a8f-b0bf-9649889f54db \
     --capabilities CAPABILITY_NAMED_IAM
 ```
 
@@ -84,10 +85,11 @@ These are all the available options for `parameter-overrides`:
 #### EC2 Configuration
 * `EC2InstanceType`: The staging host EC2 instance type. Only tested on x86_64. Default: t3.medium.
 * `EC2AMI`: The EC2 AMI. Only tested on Amazon Linux 2. Default: The latest Amazon Linux 2 AMI in the region.
-* `EC2KeyPair`: [Optional] An existing EC2 keypair to be able to ssh to your staging host.
+* `EC2KeyPair`: An existing EC2 keypair to be able to ssh to your staging host.
 
-#### HTTPS Configuration
-* `Domain`: [Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.
+#### HTTPS Configuration (Optional)
+* `Domain`: Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.
+* `Certificate`: An existing ACM certificate ARN for staging.<YOUR DOMAIN>.
 
 ## License
 
