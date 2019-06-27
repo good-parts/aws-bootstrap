@@ -69,8 +69,6 @@ aws cloudformation deploy \
       GitHubPersonalAccessToken=$(cat ~/.github/access-token) \
       EC2InstanceType=t3.micro \
       EC2KeyPair=dvassallo \
-      EC2VPC=vpc-279a8c42 \
-      EC2Subnet=subnet-533dd837 \
       Domain=vassallo.io \
     --capabilities CAPABILITY_NAMED_IAM
 ```
@@ -87,8 +85,6 @@ These are all the available options for `parameter-overrides`:
 * `EC2InstanceType`: The staging host EC2 instance type. Only tested on x86_64. Default: t3.medium.
 * `EC2AMI`: The EC2 AMI. Only tested on Amazon Linux 2. Default: The latest Amazon Linux 2 AMI in the region.
 * `EC2KeyPair`: [Optional] An existing EC2 keypair to be able to ssh to your staging host.
-* `EC2VPC`: The VPC where to run the staging host.
-* `EC2Subnet`: The subnet for the staging host.
 
 #### HTTPS Configuration
 * `Domain`: [Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.

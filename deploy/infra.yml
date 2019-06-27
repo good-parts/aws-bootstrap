@@ -26,12 +26,6 @@ Parameters:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
     Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
-  EC2VPC:
-    Type: AWS::EC2::VPC::Id
-    Description: 'The VPC where to run the staging host.'
-  EC2Subnet:
-    Type: AWS::EC2::Subnet::Id
-    Description: 'The subnet for the staging host.'
   Domain:
     Type: String
     Description: '[Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.'
@@ -52,8 +46,6 @@ Metadata:
           - EC2InstanceType
           - EC2AMI
           - EC2KeyPair
-          - EC2VPC
-          - EC2Subnet
       - Label:
           default: HTTPS Configuration
         Parameters:
@@ -73,10 +65,6 @@ Metadata:
         default: EC2 AMI
       EC2KeyPair:
         default: EC2 Key Pair
-      EC2VPC:
-        default: EC2 VPC
-      EC2Subnet:
-        default: EC2 Subnet
       Domain:
         default: Domain Name
 
@@ -230,7 +218,7 @@ Resources:
       ResourceSignal:
         Timeout: PT5M
     Properties:
-      SubnetId: !Ref EC2Subnet
+      SubnetId: !Ref Subnet
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref EC2AMI
       InstanceType: !Ref EC2InstanceType
@@ -298,7 +286,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: !Sub 'Security group from ${AWS::StackName} staging host'
-      VpcId: !Ref EC2VPC
+      VpcId: !Ref VPC
       SecurityGroupIngress:
       - IpProtocol: tcp
         FromPort: !If [HasDomain, 443, 80]
@@ -346,3 +334,59 @@ Resources:
       TTL: 300
       ResourceRecords:
       - !Ref StagingIP
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet
+
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
