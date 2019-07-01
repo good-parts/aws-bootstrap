@@ -69,7 +69,6 @@ aws cloudformation deploy \
     GitHubBranch=master \
     GitHubPersonalAccessToken=$(cat ~/.github/access-token) \
     EC2InstanceType=t3.micro \
-    EC2KeyPair=dvassallo \
     Domain=vassallo.io \
     Certificate=arn:aws:acm:us-west-2:275168683210:certificate/cd1f3db3-c045-4a8f-b0bf-9649889f54db
 ```
@@ -85,7 +84,6 @@ These are all the available options for `parameter-overrides`:
 #### EC2 Configuration
 * `EC2InstanceType`: The staging host EC2 instance type. Only tested on x86_64. Default: t3.medium.
 * `EC2AMI`: The EC2 AMI. Only tested on Amazon Linux 2. Default: The latest Amazon Linux 2 AMI in the region.
-* `EC2KeyPair`: An existing EC2 keypair to be able to ssh to your staging host.
 
 #### HTTPS Configuration (Optional)
 * `Domain`: Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.

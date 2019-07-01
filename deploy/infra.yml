@@ -15,9 +15,6 @@ Parameters:
     Type: String
     NoEcho: true
     Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
-  EC2KeyPair:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: 'An existing EC2 keypair to be able to ssh to your staging host.'
   EC2InstanceType:
     Type: String
     Default: t3.micro
@@ -50,7 +47,6 @@ Metadata:
         Parameters:
           - EC2InstanceType
           - EC2AMI
-          - EC2KeyPair
       - Label:
           default: HTTPS Configuration (Optional)
         Parameters:
@@ -69,8 +65,6 @@ Metadata:
         default: EC2 Instance Type
       EC2AMI:
         default: EC2 AMI
-      EC2KeyPair:
-        default: EC2 Key Pair
       Domain:
         default: Domain Name
       Certificate:
@@ -236,7 +230,6 @@ Resources:
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref EC2AMI
       InstanceType: !Ref EC2InstanceType
-      KeyName: !Ref EC2KeyPair
       SecurityGroupIds:
         - !GetAtt SecurityGroup.GroupId
       Tags:
