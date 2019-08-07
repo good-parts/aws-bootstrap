@@ -44,8 +44,8 @@ At the end of this setup you will end up with an EC2 instance, an S3 bucket, and
 2. Put your GitHub Personal Access Token in  `~/.github/access-token`:
 
 ```
-mkdir -p  ~/.github/access-token
-ehco "<YOUR TOKEN" >  ~/.github/access-token
+mkdir ~/.github
+echo "<YOUR TOKEN>" >  ~/.github/access-token
 ```
 
 3. Checkout your repo:
