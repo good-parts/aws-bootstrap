@@ -35,7 +35,7 @@ aws cloudformation deploy \
     GitHubPersonalAccessToken=$(cat ~/.github/access-token) \
     EC2InstanceType=t3.micro \
     Domain=goodparts.dev \
-    Certificate=arn:aws:acm:us-west-2:275168683210:certificate/cd1f3db3-c045-4a8f-b0bf-9649889f54db
+    Certificate=arn:aws:acm:us-west-2:154460179839:certificate/e6748161-8815-439f-a650-1a950c536e5b
 ```
 
 These are all the available options for `parameter-overrides`:
