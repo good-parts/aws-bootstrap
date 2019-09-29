@@ -29,8 +29,8 @@ aws cloudformation deploy \
   --no-fail-on-empty-changeset \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-    GitHubOwner=dvassallo \
-    GitHubRepo=github-to-ec2-pipeline \
+    GitHubOwner=good-parts \
+    GitHubRepo=aws-bootstrap \
     GitHubBranch=master \
     GitHubPersonalAccessToken=$(cat ~/.github/access-token) \
     EC2InstanceType=t3.micro \
