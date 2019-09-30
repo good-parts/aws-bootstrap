@@ -1,19 +1,19 @@
 {
-  "name": "github-to-ec2-pipeline",
+  "name": "aws-bootstrap",
   "version": "1.0.0",
   "description": "Continuous deployment skeleton from GitHub to EC2 using CodeBuild and CodeDeploy.",
   "main": "./src/server/server.js",
   "scripts": {
-    "test": "jest",
     "clean": "rm -Rf build dist",
-    "build": "npm run clean && babel src/server -d build && webpack --mode production --config webpack.dev.config.js",
-    "start": "node ./build/server.js",
-    "stop": "pkill app-server",
+    "build": "npm run clean && babel src/server -d build && webpack --mode production --config webpack.config.js",
+    "start": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/app.log -p $(pwd) -a start ./build/server.js",
+    "stop": "node ./node_modules/forever/bin/forever stopall",
     "start:dev": "npm-run-all -r -p watch:server watch:client",
-    "watch:client": "webpack-dev-server --mode development --config webpack.dev.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js"
+    "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
+    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js | pino-pretty",
+    "deploy:infra": "./deploy/deploy-infra.sh"
   },
-  "repository": "https://github.com/dvassallo/github-to-ec2-pipeline",
+  "repository": "https://github.com/good-parts/aws-bootstrap",
   "keywords": [],
   "author": "",
   "license": "MIT",
@@ -32,6 +32,9 @@
   "dependencies": {
     "@babel/runtime": "^7.4.5",
     "express": "^4.17.1",
+    "express-pino-logger": "^4.0.0",
+    "forever": "^1.0.0",
+    "pino": "^5.13.0",
     "react": "^16.8.6",
     "react-dom": "^16.8.6"
   },
@@ -60,14 +63,14 @@
     "nodemon": "^1.19.1",
     "npm-run-all": "^4.1.5",
     "open": ">=6.0.0",
-    "open-browser-webpack-plugin": "0.0.5",
+    "opn-browser-webpack-plugin": "0.0.7",
     "optimize-css-assets-webpack-plugin": "^5.0.1",
+    "pino-pretty": "^3.2.0",
     "style-loader": "^0.23.1",
     "uglifyjs-webpack-plugin": "^2.1.3",
     "url-loader": "^1.1.2",
     "webpack": "^4.32.2",
     "webpack-cli": "^3.3.2",
-    "webpack-dev-server": "^3.5.1",
-    "webpack-merge": "^4.2.1"
+    "webpack-dev-server": "^3.5.1"
   }
 }

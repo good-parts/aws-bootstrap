@@ -11,11 +11,6 @@ permissions:
     owner: ec2-user
     group: ec2-user
 hooks:
-  AfterInstall:
-    # copy the let's encrypt certs from their default dir to the app dir
-    - location: deploy/install-cert.sh
-      timeout: 60
-      runas: root
   ApplicationStart:
     # start the application
     - location: deploy/start-service.sh

@@ -1,3 +1,3 @@
 #!/bin/bash
-cd /home/ec2-user/app/
-npm stop >/dev/null 2>&1 &
+cd /home/ec2-user/app/release
+npm stop

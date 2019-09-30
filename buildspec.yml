@@ -13,7 +13,7 @@ phases:
       - apt-get install -y nodejs
   pre_build:
     commands:
-      # run npm install using versions in package-lock.json
+      # run 'npm install' using versions in package-lock.json
       - npm ci
   build:
     commands:

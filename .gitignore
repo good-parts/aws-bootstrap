@@ -2,4 +2,6 @@ node_modules
 dist
 build
 coverage
+deploy/cfn/output
+logs
 .DS_Store
