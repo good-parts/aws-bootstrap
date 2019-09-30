@@ -2,7 +2,7 @@
 
 # Generate a personal access token with repo and admin:repo_hook permissions from https://github.com/settings/tokens
 ACCESS_TOKEN=$(cat ~/.github/access-token)
-STACK_NAME=MyApp
+STACK_NAME=bootstrap
 REGION=us-west-2
 CLI_PROFILE=bootstrap
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile $CLI_PROFILE --output text | cut -f1)
