@@ -14,7 +14,7 @@ echo "<YOUR TOKEN>" >  ~/.github/access-token
 3. Checkout this repo:
 
 ```
-git clone https://github.com/good-parts/aws-boostrap.git
+git clone https://github.com/good-parts/aws-bootstrap.git
 cd aws-boostrap
 ```
 
