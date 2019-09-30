@@ -49,7 +49,7 @@ aws cloudformation deploy \
     GitHubBranch=master \
     GitHubPersonalAccessToken=$ACCESS_TOKEN \
     EC2StagingInstanceType=t3.micro \
-    EC2DemoInstanceType=t3.micro \
+    EC2ProdInstanceType=t3.micro \
     EC2AMI=ami-082b5a644766e0e6f \
     Domain=goodparts.dev \
     Certificate=arn:aws:acm:us-west-2:154460179839:certificate/e6748161-8815-439f-a650-1a950c536e5b \

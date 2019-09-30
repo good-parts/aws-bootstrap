@@ -18,9 +18,9 @@ Parameters:
   EC2StagingInstanceType:
     Type: String
     Description: 'The EC2 instance type for the staging host.'
-  EC2DemoInstanceType:
+  EC2ProdInstanceType:
     Type: String
-    Description: 'The EC2 instance type for the demo host.'
+    Description: 'The EC2 instance type for the prod host.'
   EC2AMI:
     Type: String
     Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
@@ -68,17 +68,17 @@ Resources:
           Value: !Ref Staging
       ServiceRoleArn: !GetAtt ServiceRole.Arn
 
-  DemoDeploymentGroup:
+  ProdDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn: Demo
+    DependsOn: Prod
     Properties:
-      DeploymentGroupName: demo
+      DeploymentGroupName: prod
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       Ec2TagFilters:
         - Key: aws:cloudformation:stack-id
           Type: KEY_AND_VALUE
-          Value: !Ref Demo
+          Value: !Ref Prod
       ServiceRoleArn: !GetAtt ServiceRole.Arn
 
   Pipeline:
@@ -136,9 +136,9 @@ Resources:
                 ApplicationName: !Ref DeploymentApplication
                 DeploymentGroupName: !Ref StagingDeploymentGroup
               RunOrder: 1
-        - Name: Demo
+        - Name: Prod
           Actions:
-            - Name: Demo
+            - Name: Prod
               InputArtifacts:
                 - Name: Build
               ActionTypeId:
@@ -148,7 +148,7 @@ Resources:
                 Provider: CodeDeploy
               Configuration:
                 ApplicationName: !Ref DeploymentApplication
-                DeploymentGroupName: !Ref DemoDeploymentGroup
+                DeploymentGroupName: !Ref ProdDeploymentGroup
               RunOrder: 1
 
   PipelineWebhook:
@@ -194,14 +194,14 @@ Resources:
         Domain: !Ref Domain
         SubDomain: staging
 
-  Demo:
+  Prod:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: stage.yml
       TimeoutInMinutes: 30
       Parameters:
-        EC2InstanceType: !Ref EC2DemoInstanceType
+        EC2InstanceType: !Ref EC2ProdInstanceType
         EC2AMI: !Ref EC2AMI
         Certificate: !Ref Certificate
         Domain: !Ref Domain
-        SubDomain: demo
+        SubDomain: prod
