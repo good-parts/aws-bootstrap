@@ -28,7 +28,10 @@ import keygen from 'ssh-keygen'
 
     // find the EC2 instance for the specified stage
     const instances = await ec2.describeInstances({
-      Filters: [{ Name: 'tag:aws:cloudformation:stack-name', Values: [`bootstrap-${stage}-*`] }]
+      Filters: [
+        { Name: 'tag:aws:cloudformation:stack-name', Values: [`bootstrap-${stage}-*`] },
+        { Name: 'instance-state-name', Values: ['running'] }
+      ]
     }).promise()
 
     const instanceId = instances.Reservations[0].Instances[0].InstanceId
