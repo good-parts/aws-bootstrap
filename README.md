@@ -18,7 +18,7 @@ git clone https://github.com/good-parts/aws-boostrap.git
 cd aws-boostrap
 ```
 
-5. Deploy:
+4. Deploy:
 
 ```
 npm run deploy:infra
