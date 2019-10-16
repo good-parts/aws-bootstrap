@@ -60,6 +60,9 @@ Resources:
     DependsOn: Staging
     Properties:
       DeploymentGroupName: staging
+      AutoScalingGroups:
+        - Fn::ImportValue:
+            !Sub "staging-ScalingGroup"
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       Ec2TagFilters:
@@ -73,6 +76,9 @@ Resources:
     DependsOn: Prod
     Properties:
       DeploymentGroupName: prod
+      AutoScalingGroups:
+        - Fn::ImportValue:
+            !Sub "prod-ScalingGroup"
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       Ec2TagFilters:

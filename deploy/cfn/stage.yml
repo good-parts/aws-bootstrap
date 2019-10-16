@@ -12,10 +12,24 @@ Parameters:
   Certificate:
     Type: String
 
+Outputs:
+  ScalingGroup:
+    Description: The ScalingGroup
+    Value: !Ref ScalingGroup
+    Export:
+      Name: !Sub "${SubDomain}-ScalingGroup"
+
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
+    Metadata:
+      'AWS::CloudFormation::Init':
+        config:
+          packages:
+            yum:
+              awslogs: []
     Properties:
+      LaunchTemplateName: !Sub 'LaunchTemplate_${AWS::StackName}'
       LaunchTemplateData:
         IamInstanceProfile:
           Arn: !GetAtt InstanceProfile.Arn
@@ -27,7 +41,13 @@ Resources:
           - !GetAtt SecurityGroup.GroupId
         UserData:
           Fn::Base64: !Sub |
-            #!/bin/bash
+            #!/bin/bash -xe
+
+            # send script output to /tmp...
+            exec > /tmp/part-001.log 2>&1
+
+            # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
+            yum install -y aws-cfn-bootstrap
 
             # Get Node.js 12
             curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
@@ -56,19 +76,54 @@ Resources:
             chown -R ec2-user:ec2-user /home/ec2-user/app
 
             # Signal to CloudFormation that the instance is ready
-            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
-            /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource LaunchTemplate
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource ScalingGroup
 
-  Instance:
-    Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT5M
+  ScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: "1"
+        MaxBatchSize: "1"
+        PauseTime: "PT15M"
+        WaitOnResourceSignals: "true"
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
     Properties:
-      SubnetId: !Ref Subnet
+      AutoScalingGroupName: !Sub 'ASG_${AWS::StackName}'
+      #TODO use placement groups
+      AvailabilityZones:
+        - !Select [ 0, !GetAZs '' ]
+      MinSize: 1
+      DesiredCapacity: 1
+      MaxSize: 5
+      HealthCheckGracePeriod: 0
+      HealthCheckType: ELB
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate
-        Version: 1
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      # TODO LifecycleHookSpecificationList:
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+      MetricsCollection:
+        -
+          Granularity: "1Minute"
+          Metrics:
+            - "GroupMaxSize"
+            - "GroupInServiceInstances"
+      # TODO NotificationConfigurations:
+      # TODO PlacementGroup: String
+      VPCZoneIdentifier:
+        - !Ref Subnet
+      Tags:
+          - Key: Name
+            Value: !Ref AWS::StackName
+            PropagateAtLaunch: "true"
+
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -144,14 +199,12 @@ Resources:
   LoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      TargetType: ip
+      TargetType: instance
       Port: 8443
       Protocol: TLS
       VpcId: !Ref VPC
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTPS
-      Targets:
-        - Id: !GetAtt Instance.PrivateIp
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
