@@ -38,7 +38,7 @@ Resources:
         Monitoring:
           Enabled: true
         SecurityGroupIds:
-          - !GetAtt SecurityGroup.GroupId
+          - !GetAtt SecurityGroupInternal.GroupId
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash -xe
@@ -98,6 +98,7 @@ Resources:
       #TODO use placement groups
       AvailabilityZones:
         - !Select [ 0, !GetAZs '' ]
+        - !Select [ 1, !GetAZs '' ]
       MinSize: 1
       DesiredCapacity: 1
       MaxSize: 5
@@ -118,12 +119,27 @@ Resources:
       # TODO NotificationConfigurations:
       # TODO PlacementGroup: String
       VPCZoneIdentifier:
-        - !Ref Subnet
+        - !Ref SubnetAZ1
+        - !Ref SubnetAZ2
       Tags:
           - Key: Name
             Value: !Ref AWS::StackName
             PropagateAtLaunch: "true"
 
+  SecurityGroupInternal:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Internal Security group for ${AWS::StackName} ${SubDomain}'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -132,9 +148,9 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress:
       - IpProtocol: tcp
-        FromPort: 8443
-        ToPort: 8443
-        CidrIp: !GetAtt VPC.CidrBlock
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 22
         ToPort: 22
@@ -177,9 +193,13 @@ Resources:
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Type: network
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt SecurityGroup.GroupId
       Subnets:
-        - !Ref Subnet
+        - !Ref SubnetAZ1
+        - !Ref SubnetAZ2
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -194,14 +214,14 @@ Resources:
       Certificates:
         - CertificateArn: !Ref Certificate
       Port: 443
-      Protocol: TLS
+      Protocol: HTTPS
 
   LoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       TargetType: instance
       Port: 8443
-      Protocol: TLS
+      Protocol: HTTPS
       VpcId: !Ref VPC
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTPS
@@ -248,19 +268,40 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  SubnetRouteTableAssociation:
+  SubnetRouteTableAssociationAZ1:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref RouteTable
-      SubnetId: !Ref Subnet
+      SubnetId: !Ref SubnetAZ1
 
-  Subnet:
+  SubnetAZ1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: 10.0.1.0/24
+      CidrBlock: 10.0.128.0/18
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
+        - Key: AZ
+          Value: !Select [ 0, !GetAZs '' ]
+
+  SubnetRouteTableAssociationAZ2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetAZ2
+
+  SubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.64.0/18
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: AZ
+          Value: !Select [ 1, !GetAZs '' ]
