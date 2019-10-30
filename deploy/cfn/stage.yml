@@ -13,11 +13,6 @@ Parameters:
     Type: String
 
 Outputs:
-  ScalingGroup:
-    Description: The ScalingGroup
-    Value: !Ref ScalingGroup
-    Export:
-      Name: !Sub "${SubDomain}-ScalingGroup"
   ScalingGroupAZ1:
     Description: The ScalingGroup for AZ1
     Value: !Ref ScalingGroupAZ1
@@ -88,52 +83,6 @@ Resources:
             # Signal to CloudFormation that the instance is ready
             /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource LaunchTemplate
             /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource ScalingGroup
-
-  ScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
-    UpdatePolicy:
-      AutoScalingRollingUpdate:
-        MinInstancesInService: "1"
-        MaxBatchSize: "1"
-        PauseTime: "PT15M"
-        WaitOnResourceSignals: "true"
-        SuspendProcesses:
-          - HealthCheck
-          - ReplaceUnhealthy
-          - AZRebalance
-          - AlarmNotification
-          - ScheduledActions
-    Properties:
-      AutoScalingGroupName: !Sub 'ASG_${AWS::StackName}'
-      #TODO use placement groups
-      AvailabilityZones:
-        - !Select [ 0, !GetAZs '' ]
-        - !Select [ 1, !GetAZs '' ]
-      MinSize: 1
-      DesiredCapacity: 1
-      MaxSize: 5
-      HealthCheckGracePeriod: 0
-      HealthCheckType: ELB
-      LaunchTemplate:
-        LaunchTemplateId: !Ref LaunchTemplate
-        Version: !GetAtt LaunchTemplate.LatestVersionNumber
-      # TODO LifecycleHookSpecificationList:
-      TargetGroupARNs:
-        - !Ref LoadBalancerTargetGroup
-      MetricsCollection:
-        -
-          Granularity: "1Minute"
-          Metrics:
-            - "GroupMaxSize"
-            - "GroupInServiceInstances"
-      # TODO NotificationConfigurations:
-      VPCZoneIdentifier:
-        - !Ref SubnetAZ1
-        - !Ref SubnetAZ2
-      Tags:
-          - Key: Name
-            Value: !Ref AWS::StackName
-            PropagateAtLaunch: "true"
 
   ScalingGroupAZ1:
     Type: AWS::AutoScaling::AutoScalingGroup
