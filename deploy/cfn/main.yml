@@ -63,6 +63,8 @@ Resources:
       AutoScalingGroups:
         - Fn::ImportValue:
             !Sub "staging-ScalingGroup"
+        - !GetAtt Staging.Outputs.ScalingGroupAZ1
+        - !GetAtt Staging.Outputs.ScalingGroupAZ2
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       Ec2TagFilters:
@@ -79,6 +81,8 @@ Resources:
       AutoScalingGroups:
         - Fn::ImportValue:
             !Sub "prod-ScalingGroup"
+        - !GetAtt Prod.Outputs.ScalingGroupAZ1
+        - !GetAtt Prod.Outputs.ScalingGroupAZ2
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       Ec2TagFilters:

@@ -18,6 +18,16 @@ Outputs:
     Value: !Ref ScalingGroup
     Export:
       Name: !Sub "${SubDomain}-ScalingGroup"
+  ScalingGroupAZ1:
+    Description: The ScalingGroup for AZ1
+    Value: !Ref ScalingGroupAZ1
+    Export:
+      Name: !Sub "${SubDomain}-az1-ScalingGroup"
+  ScalingGroupAZ2:
+    Description: The ScalingGroup for AZ2
+    Value: !Ref ScalingGroupAZ2
+    Export:
+      Name: !Sub "${SubDomain}-az2-ScalingGroup"
 
 Resources:
   LaunchTemplate:
@@ -117,7 +127,6 @@ Resources:
             - "GroupMaxSize"
             - "GroupInServiceInstances"
       # TODO NotificationConfigurations:
-      # TODO PlacementGroup: String
       VPCZoneIdentifier:
         - !Ref SubnetAZ1
         - !Ref SubnetAZ2
@@ -125,6 +134,91 @@ Resources:
           - Key: Name
             Value: !Ref AWS::StackName
             PropagateAtLaunch: "true"
+
+  ScalingGroupAZ1:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: "1"
+        MaxBatchSize: "1"
+        PauseTime: "PT15M"
+        WaitOnResourceSignals: "true"
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+    Properties:
+      AutoScalingGroupName: !Sub 'ASG_AZ1_${AWS::StackName}'
+      AvailabilityZones:
+        - !Select [ 0, !GetAZs '' ]
+      MinSize: 1
+      MaxSize: 5
+      HealthCheckGracePeriod: 0
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      # TODO LifecycleHookSpecificationList:
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+      MetricsCollection:
+        -
+          Granularity: "1Minute"
+          Metrics:
+            - "GroupMaxSize"
+            - "GroupInServiceInstances"
+      # TODO NotificationConfigurations:
+      VPCZoneIdentifier:
+        - !Ref SubnetAZ1
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+          PropagateAtLaunch: "true"
+
+  ScalingGroupAZ2:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: "1"
+        MaxBatchSize: "1"
+        PauseTime: "PT15M"
+        WaitOnResourceSignals: "true"
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+    Properties:
+      AutoScalingGroupName: !Sub 'ASG_AZ2_${AWS::StackName}'
+      AvailabilityZones:
+        - !Select [ 1, !GetAZs '' ]
+      MinSize: 1
+      MaxSize: 5
+      HealthCheckGracePeriod: 0
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      # TODO LifecycleHookSpecificationList:
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+      MetricsCollection:
+        -
+          Granularity: "1Minute"
+          Metrics:
+            - "GroupMaxSize"
+            - "GroupInServiceInstances"
+      # TODO NotificationConfigurations:
+      VPCZoneIdentifier:
+        - !Ref SubnetAZ2
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+          PropagateAtLaunch: "true"
+
 
   SecurityGroupInternal:
     Type: AWS::EC2::SecurityGroup
