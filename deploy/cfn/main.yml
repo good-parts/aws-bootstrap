@@ -61,8 +61,6 @@ Resources:
     Properties:
       DeploymentGroupName: staging
       AutoScalingGroups:
-        - Fn::ImportValue:
-            !Sub "staging-ScalingGroup"
         - !GetAtt Staging.Outputs.ScalingGroupAZ1
         - !GetAtt Staging.Outputs.ScalingGroupAZ2
       ApplicationName: !Ref DeploymentApplication
@@ -79,8 +77,6 @@ Resources:
     Properties:
       DeploymentGroupName: prod
       AutoScalingGroups:
-        - Fn::ImportValue:
-            !Sub "prod-ScalingGroup"
         - !GetAtt Prod.Outputs.ScalingGroupAZ1
         - !GetAtt Prod.Outputs.ScalingGroupAZ2
       ApplicationName: !Ref DeploymentApplication
