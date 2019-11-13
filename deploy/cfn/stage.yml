@@ -241,8 +241,8 @@ Resources:
       SecurityGroups:
         - !GetAtt SecurityGroup.GroupId
       Subnets:
-        - !Ref SubnetAZ1
-        - !Ref SubnetAZ2
+        - !Ref PublicSubnetAZ1
+        - !Ref PublicSubnetAZ2
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -345,11 +345,17 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  SubnetRouteTableAssociationAZ1:
+  SubnetRouteTableAssociationPublicAZ1:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref RouteTable
-      SubnetId: !Ref SubnetAZ1
+      SubnetId: !Ref PublicSubnetAZ1
+
+  SubnetRouteTableAssociationPublicAZ2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnetAZ2
 
   PrivateSubnetRouteTableAZ1:
     Type: AWS::EC2::RouteTable
@@ -368,6 +374,12 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NATGatewayAZ1
 
+  PrivateSubnetRouteTableAssociationAZ1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableAZ1
+      SubnetId: !Ref SubnetAZ1
+
   PrivateSubnetRouteTableAZ2:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -384,6 +396,12 @@ Resources:
       RouteTableId: !Ref PrivateSubnetRouteTableAZ2
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NATGatewayAZ2
+
+  PrivateSubnetRouteTableAssociationAZ2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableAZ2
+      SubnetId: !Ref SubnetAZ2
 
   PublicSubnetAZ1:
     Type: AWS::EC2::Subnet
@@ -417,7 +435,7 @@ Resources:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       CidrBlock: 10.0.128.0/18
-      MapPublicIpOnLaunch: true # TODO - NAT phase 2 - flip to false
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -430,7 +448,7 @@ Resources:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       CidrBlock: 10.0.64.0/18
-      MapPublicIpOnLaunch: true # TODO - NAT phase 2 - flip to false
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
