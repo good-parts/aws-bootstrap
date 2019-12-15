@@ -1,0 +1,22 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 10
+  pre_build:
+    commands:
+      # run 'npm install' using versions in package-lock.json
+      - npm ci
+  build:
+    commands:
+      # run the build
+      - npm run build
+artifacts:
+  files:
+    - start-service.sh
+    - stop-service.sh
+    - server.js
+    - package.json
+    - appspec.yml
+    - 'node_modules/**/*'
