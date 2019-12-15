@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  EC2InstanceType:
+    Type: String
+  EC2AMI:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:
+        !Sub 'Security group for ${AWS::StackName}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - "ec2.amazonaws.com"
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+
+  Instance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+        Count: 1
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              wget: []
+              unzip: []
+    Properties:
+      ImageId: !Ref EC2AMI
+      InstanceType: !Ref EC2InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      Monitoring: true
+      SecurityGroupIds:
+        - !GetAtt SecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+
+          # send script output to /tmp so we can debug boot failures
+          exec > /tmp/userdata.log 2>&1
+
+          # Update all packages
+          yum -y update
+
+          # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
+          yum install -y aws-cfn-bootstrap
+
+          # Have CloudFormation install any files and packages from the metadata
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
+
+          cat > /tmp/install_script.sh << EOF
+            # START
+            echo "Setting up NodeJS Environment"
+            curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+
+            # Dot source the files to ensure that variables are available within the current shell
+            . /home/ec2-user/.nvm/nvm.sh
+            . /home/ec2-user/.bashrc
+
+            # Install NVM, NPM, Node.JS
+            nvm alias default v12.7.0
+            nvm install v12.7.0
+            nvm use v12.7.0
+
+            # Download latest code, unzip it into /home/ec2-user/app
+            wget https://github.com/good-parts/aws-bootstrap/archive/master.zip
+            unzip master.zip
+            mv aws-bootstrap-master app
+
+            # Create log directory
+            mkdir -p /home/ec2-user/app/logs
+
+            # Run server
+            cd app
+            npm install
+            npm start
+          EOF
+
+          chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
+          sleep 1; su - ec2-user -c "/tmp/install_script.sh"
+
+          # Signal to CloudFormation that the instance is ready
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+Outputs:
+  InstanceDNS:
+    Description: The DNS name for the created instance
+    Value: !Sub "http://${Instance.PublicDnsName}:8080"
+    Export:
+      Name: InstanceDNS
