@@ -57,6 +57,14 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchFullAccess
         - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
+      Policies:
+        - PolicyName: ec2DescribeTags
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 'ec2:DescribeTags'
+                Resource: '*'
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -67,18 +75,15 @@ Resources:
       Roles:
         - Ref: InstanceRole
 
-  Instance:
-    Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT5M
-        Count: 1
+  InstanceLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
     Metadata:
       AWS::CloudFormation::Init:
         config:
           packages:
             yum:
               ruby: []
+              jq: []
           files:
             /home/ec2-user/install:
               source: !Sub "https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install"
@@ -88,50 +93,88 @@ Resources:
               command: "./install auto"
               cwd: "/home/ec2-user/"
     Properties:
-      ImageId: !Ref EC2AMI
-      InstanceType: !Ref EC2InstanceType
-      IamInstanceProfile: !Ref InstanceProfile
-      Monitoring: true
-      SecurityGroupIds:
-        - !GetAtt SecurityGroup.GroupId
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash -xe
+      LaunchTemplateName: !Sub 'LaunchTemplate_${AWS::StackName}'
+      LaunchTemplateData:
+        ImageId: !Ref EC2AMI
+        InstanceType: !Ref EC2InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        Monitoring:
+          Enabled: true
+        SecurityGroupIds:
+          - !GetAtt SecurityGroup.GroupId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
 
-          # send script output to /tmp so we can debug boot failures
-          exec > /tmp/userdata.log 2>&1
+            # send script output to /tmp so we can debug boot failures
+            exec > /tmp/userdata.log 2>&1
 
-          # Update all packages
-          yum -y update
+            # Update all packages
+            yum -y update
 
-          # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
-          yum install -y aws-cfn-bootstrap
+            # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
+            yum install -y aws-cfn-bootstrap
 
-          cat > /tmp/install_script.sh << EOF
-            # START
-            echo "Setting up NodeJS Environment"
-            curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+            cat > /tmp/install_script.sh << EOF
+              # START
+              echo "Setting up NodeJS Environment"
+              curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 
-            # Dot source the files to ensure that variables are available within the current shell
-            . /home/ec2-user/.nvm/nvm.sh
-            . /home/ec2-user/.bashrc
+              # Dot source the files to ensure that variables are available within the current shell
+              . /home/ec2-user/.nvm/nvm.sh
+              . /home/ec2-user/.bashrc
 
-            # Install NVM, NPM, Node.JS
-            nvm alias default v12.7.0
-            nvm install v12.7.0
-            nvm use v12.7.0
+              # Install NVM, NPM, Node.JS
+              nvm alias default v12.7.0
+              nvm install v12.7.0
+              nvm use v12.7.0
 
-            # Create log directory
-            mkdir -p /home/ec2-user/app/logs
-          EOF
+              # Create log directory
+              mkdir -p /home/ec2-user/app/logs
+            EOF
 
-          chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
-          sleep 1; su - ec2-user -c "/tmp/install_script.sh"
+            chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
+            sleep 1; su - ec2-user -c "/tmp/install_script.sh"
 
-          # Have CloudFormation install any files and packages from the metadata
-          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
-          # Signal to CloudFormation that the instance is ready
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
+            # Have CloudFormation install any files and packages from the metadata
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource InstanceLaunchTemplate
+
+            # Query the EC2 metadata service for this instance's instance-id
+            export INSTANCE_ID=`curl -s http://169.254.169.254/latest/meta-data/instance-id`
+            # Query EC2 describeTags method and pull our the CFN Logical ID for this instance
+            export LOGICAL_ID=`aws --region us-east-1 ec2 describe-tags \
+              --filters "Name=resource-id,Values=${!INSTANCE_ID}" \
+                        "Name=key,Values=aws:cloudformation:logical-id" \
+              | jq -r ".Tags[0].Value"`
+
+            # Signal to CloudFormation that the instance is ready
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource ${!LOGICAL_ID}
+
+  Instance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+        Count: 1
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref InstanceLaunchTemplate
+        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  Instance2:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+        Count: 1
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref InstanceLaunchTemplate
+        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -263,3 +306,10 @@ Outputs:
     Value:  !Sub "http://${Instance.PublicDnsName}:8080"
     Export:
       Name: InstanceEndpoint
+
+  InstanceEndpoint2:
+    Description: The DNS name for the created instance
+    Value: !Sub "http://${Instance2.PublicDnsName}:8080"
+    Export:
+      Name: InstanceEndpoint2
+
