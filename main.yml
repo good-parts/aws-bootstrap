@@ -233,36 +233,6 @@ Resources:
       RouteTableId: !Ref RouteTable
       SubnetId: !Ref SubnetAZ2
 
-  Instance:
-    Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT5M
-        Count: 1
-    Properties:
-      SubnetId: !Ref SubnetAZ1
-      LaunchTemplate:
-        LaunchTemplateId: !Ref InstanceLaunchTemplate
-        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
-      Tags:
-        - Key: Name
-          Value: !Ref AWS::StackName
-
-  Instance2:
-    Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT5M
-        Count: 1
-    Properties:
-      SubnetId: !Ref SubnetAZ2
-      LaunchTemplate:
-        LaunchTemplateId: !Ref InstanceLaunchTemplate
-        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
-      Tags:
-        - Key: Name
-          Value: !Ref AWS::StackName
-
   ScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     UpdatePolicy:
@@ -338,9 +308,6 @@ Resources:
       VpcId: !Ref VPC
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
-      Targets:
-        - Id: !Ref Instance
-        - Id: !Ref Instance2
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -383,7 +350,6 @@ Resources:
 
   StagingDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn: Instance
     Properties:
       DeploymentGroupName: staging
       AutoScalingGroups:
@@ -391,10 +357,6 @@ Resources:
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       ServiceRoleArn: !GetAtt DeploymentRole.Arn
-      Ec2TagFilters:
-        - Key: aws:cloudformation:stack-name
-          Type: KEY_AND_VALUE
-          Value: !Ref AWS::StackName
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -469,18 +431,6 @@ Resources:
 
 
 Outputs:
-  InstanceEndpoint:
-    Description: The DNS name for the created instance
-    Value:  !Sub "http://${Instance.PublicDnsName}:8080"
-    Export:
-      Name: InstanceEndpoint
-
-  InstanceEndpoint2:
-    Description: The DNS name for the created instance
-    Value: !Sub "http://${Instance2.PublicDnsName}:8080"
-    Export:
-      Name: InstanceEndpoint2
-
   LBEndpoint:
     Description: The DNS name for the LB
     Value: !Sub "http://${LoadBalancer.DNSName}:80"
