@@ -1,0 +1,304 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  EC2InstanceType:
+    Type: String
+  EC2AMI:
+    Type: String
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription:
+        !Sub 'Security group for ${AWS::StackName}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - "ec2.amazonaws.com"
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
+      Policies:
+        - PolicyName: ec2DescribeTags
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 'ec2:DescribeTags'
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+
+  InstanceLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              ruby: []
+              jq: []
+          files:
+            /home/ec2-user/install:
+              source: !Sub "https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install"
+              mode: "000755" # executable
+          commands:
+            00-install-cd-agent:
+              command: "./install auto"
+              cwd: "/home/ec2-user/"
+    Properties:
+      LaunchTemplateName: !Sub 'LaunchTemplate_${AWS::StackName}'
+      LaunchTemplateData:
+        ImageId: !Ref EC2AMI
+        InstanceType: !Ref EC2InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        Monitoring:
+          Enabled: true
+        SecurityGroupIds:
+          - !GetAtt SecurityGroup.GroupId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+
+            # send script output to /tmp so we can debug boot failures
+            exec > /tmp/userdata.log 2>&1
+
+            # Update all packages
+            yum -y update
+
+            # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
+            yum install -y aws-cfn-bootstrap
+
+            cat > /tmp/install_script.sh << EOF
+              # START
+              echo "Setting up NodeJS Environment"
+              curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+
+              # Dot source the files to ensure that variables are available within the current shell
+              . /home/ec2-user/.nvm/nvm.sh
+              . /home/ec2-user/.bashrc
+
+              # Install NVM, NPM, Node.JS
+              nvm alias default v12.7.0
+              nvm install v12.7.0
+              nvm use v12.7.0
+
+              # Create log directory
+              mkdir -p /home/ec2-user/app/logs
+            EOF
+
+            chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
+            sleep 1; su - ec2-user -c "/tmp/install_script.sh"
+
+            # Have CloudFormation install any files and packages from the metadata
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource InstanceLaunchTemplate
+
+            # Query the EC2 metadata service for this instance's instance-id
+            export INSTANCE_ID=`curl -s http://169.254.169.254/latest/meta-data/instance-id`
+            # Query EC2 describeTags method and pull our the CFN Logical ID for this instance
+            export LOGICAL_ID=`aws --region us-east-1 ec2 describe-tags \
+              --filters "Name=resource-id,Values=${!INSTANCE_ID}" \
+                        "Name=key,Values=aws:cloudformation:logical-id" \
+              | jq -r ".Tags[0].Value"`
+
+            # Signal to CloudFormation that the instance is ready
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource ${!LOGICAL_ID}
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  SubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.0.0/18
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: AZ
+          Value: !Select [ 0, !GetAZs '' ]
+
+  SubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.64.0/18
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: AZ
+          Value: !Select [ 1, !GetAZs '' ]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociationAZ1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetAZ1
+
+  SubnetRouteTableAssociationAZ2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetAZ2
+
+  ScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: "1"
+        MaxBatchSize: "1"
+        PauseTime: "PT15M"
+        WaitOnResourceSignals: "true"
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+    Properties:
+      AutoScalingGroupName: !Sub 'ASG_${AWS::StackName}'
+      AvailabilityZones:
+        - !Select [ 0, !GetAZs '' ]
+        - !Select [ 1, !GetAZs '' ]
+      MinSize: 2
+      MaxSize: 6
+      HealthCheckGracePeriod: 0
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref InstanceLaunchTemplate
+        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+      MetricsCollection:
+        -
+          Granularity: "1Minute"
+          Metrics:
+            - "GroupMaxSize"
+            - "GroupInServiceInstances"
+      VPCZoneIdentifier:
+        - !Ref SubnetAZ1
+        - !Ref SubnetAZ2
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+          PropagateAtLaunch: "true"
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt SecurityGroup.GroupId
+      Subnets:
+        - !Ref SubnetAZ1
+        - !Ref SubnetAZ2
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: instance
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+
+Outputs:
+  LBEndpoint:
+    Description: The DNS name for the LB
+    Value: !Sub "http://${LoadBalancer.DNSName}:80"
+  ScalingGroup:
+    Description: The ScalingGroup for this stage
+    Value: !Ref ScalingGroup
