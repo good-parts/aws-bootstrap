@@ -5,6 +5,10 @@ Parameters:
     Type: String
   EC2AMI:
     Type: String
+  Domain:
+    Type: String
+  SubDomain:
+    Type: String
 
 Resources:
   SecurityGroup:
@@ -137,6 +141,16 @@ Resources:
 
             # Signal to CloudFormation that the instance is ready
             /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource ${!LOGICAL_ID}
+
+  DNS:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: !Sub '${Domain}.'
+      Name: !Sub '${SubDomain}.${Domain}.'
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt LoadBalancer.DNSName
 
   VPC:
     Type: AWS::EC2::VPC
@@ -297,8 +311,8 @@ Resources:
 
 Outputs:
   LBEndpoint:
-    Description: The DNS name for the LB
-    Value: !Sub "http://${LoadBalancer.DNSName}:80"
+    Description: The DNS name for the stage
+    Value: !Sub "http://${DNS}"
   ScalingGroup:
     Description: The ScalingGroup for this stage
     Value: !Ref ScalingGroup
