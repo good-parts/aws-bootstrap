@@ -22,16 +22,8 @@ Resources:
         !Sub 'Security group for ${AWS::StackName}'
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
           FromPort: 8443
           ToPort: 8443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 443
@@ -273,7 +265,6 @@ Resources:
         LaunchTemplateId: !Ref InstanceLaunchTemplate
         Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
       TargetGroupARNs:
-        - !Ref LoadBalancerTargetGroup
         - !Ref HTTPSLoadBalancerTargetGroup
       MetricsCollection:
         -
@@ -303,16 +294,6 @@ Resources:
         - Key: Name
           Value: !Ref AWS::StackName
 
-  LoadBalancerListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref LoadBalancerTargetGroup
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
-
   HTTPSLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -324,20 +305,6 @@ Resources:
         - CertificateArn: !Ref Certificate
       Port: 443
       Protocol: HTTPS
-
-
-  LoadBalancerTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      TargetType: instance
-      Port: 8080
-      Protocol: HTTP
-      VpcId: !Ref VPC
-      HealthCheckEnabled: true
-      HealthCheckProtocol: HTTP
-      Tags:
-        - Key: Name
-          Value: !Ref AWS::StackName
 
   HTTPSLoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -352,11 +319,7 @@ Resources:
         - Key: Name
           Value: !Ref AWS::StackName
 
-
 Outputs:
-  LBEndpoint:
-    Description: The DNS name for the stage
-    Value: !Sub "http://${DNS}"
   HTTPSEndpoint:
     Description: The DNS name for the stage
     Value: !Sub "https://${DNS}"
