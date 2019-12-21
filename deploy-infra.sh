@@ -6,7 +6,8 @@ CLI_PROFILE=awsbootstrap
 
 EC2_INSTANCE_TYPE=t2.micro
 DOMAIN=the-good-parts.com
-
+CERT=`aws acm list-certificates --region $REGION --profile awsbootstrap --output text \
+        --query "CertificateSummaryList[?DomainName=='$DOMAIN'].CertificateArn | [0]"`
 AWS_ACCOUNT_ID=`aws sts get-caller-identity --profile awsbootstrap \
         --query "Account" --output text`
 CODEPIPELINE_BUCKET="$STACK_NAME-$REGION-codepipeline-$AWS_ACCOUNT_ID"
@@ -61,6 +62,7 @@ aws cloudformation deploy \
   --parameter-overrides \
     EC2InstanceType=$EC2_INSTANCE_TYPE \
     Domain=$DOMAIN \
+    Certificate=$CERT \
     GitHubOwner=$GH_OWNER \
     GitHubRepo=$GH_REPO \
     GitHubBranch=$GH_BRANCH \
