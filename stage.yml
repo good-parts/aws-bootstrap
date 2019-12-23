@@ -25,14 +25,6 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 8443
-          ToPort: 8443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
